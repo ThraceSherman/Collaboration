@@ -8,6 +8,8 @@ namespace ithappy.Animals_FREE
         private float m_Offset = 1.5f;
         [SerializeField, Range(0f, 360f)]
         private float m_CameraSpeed = 90f;
+        [SerializeField, Range(1f, 10f)]
+        private float m_Distance = 5f;
 
         private Vector3 m_LookPoint;
         private Vector3 m_TargetPos;
