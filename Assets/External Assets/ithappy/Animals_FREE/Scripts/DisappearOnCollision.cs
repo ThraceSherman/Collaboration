@@ -33,6 +33,6 @@ public class DisappearOnCollision : MonoBehaviour
     }
     void SetCountText()
     {
-        countText.text = "Seasoning\nCollected: " + count.ToString();
+        countText.text = "Seasoning\nCollected: " + count.ToString() +"/7";
     }
 }

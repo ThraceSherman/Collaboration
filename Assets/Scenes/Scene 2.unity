@@ -997,7 +997,7 @@ MonoBehaviour:
   m_SensitivityY: 0.1
   m_Zoom: 0.13
   m_SensetivityZoom: 0.1
-  m_MinAngle: 2
+  m_MinAngle: 12.2
   m_MaxAngle: 17.8
   m_Offset: 0.28
   m_CameraSpeed: 90
