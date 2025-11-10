@@ -5,6 +5,7 @@ TagManager:
   serializedVersion: 3
   tags:
   - Collected
+  - Level Exiter
   layers:
   - Default
   - TransparentFX
