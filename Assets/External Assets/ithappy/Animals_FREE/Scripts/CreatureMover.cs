@@ -14,10 +14,12 @@ namespace ithappy.Animals_FREE
         private float m_WalkSpeed = 1f;
         [SerializeField]
         private float m_RunSpeed = 4f;
-        [SerializeField, Range(0f, 360f)]
+        [SerializeField, Range(0f, 3600f)]
         private float m_RotateSpeed = 90f;
         [SerializeField]
         private Space m_Space = Space.Self;
+        [SerializeField]
+        private float m_GravityScale = 2f;
         [SerializeField]
         private float m_JumpHeight = 5f;
 
@@ -41,6 +43,7 @@ namespace ithappy.Animals_FREE
         private bool m_IsRun;
 
         private bool m_IsMoving;
+        private bool m_IsJump;
 
         public Vector2 Axis => m_Axis;
         public Vector3 Target => m_Target;
@@ -51,7 +54,7 @@ namespace ithappy.Animals_FREE
             m_WalkSpeed = Mathf.Max(m_WalkSpeed, 0f);
             m_RunSpeed = Mathf.Max(m_RunSpeed, m_WalkSpeed);
 
-            m_Movement?.SetStats(m_WalkSpeed / 3.6f, m_RunSpeed / 3.6f, m_RotateSpeed, m_JumpHeight, m_Space);
+            m_Movement?.SetStats(m_WalkSpeed / 3.6f, m_RunSpeed / 3.6f, m_RotateSpeed, m_JumpHeight, m_GravityScale, m_Space);
         }
 
         private void Awake()
@@ -60,13 +63,13 @@ namespace ithappy.Animals_FREE
             m_Controller = GetComponent<CharacterController>();
             m_Animator = GetComponent<Animator>();
 
-            m_Movement = new MovementHandler(m_Controller, m_Transform, m_WalkSpeed, m_RunSpeed, m_RotateSpeed, m_JumpHeight, m_Space);
+            m_Movement = new MovementHandler(m_Controller, m_Transform, m_WalkSpeed, m_RunSpeed, m_RotateSpeed, m_JumpHeight, m_GravityScale, m_Space);
             m_Animation = new AnimationHandler(m_Animator, m_VerticalID, m_StateID);
         }
 
         private void Update()
         {
-            m_Movement.Move(Time.deltaTime, in m_Axis, in m_Target, m_IsRun, m_IsMoving, out var animAxis, out var isAir);
+            m_Movement.Move(Time.deltaTime, in m_Axis, in m_Target, m_IsRun, m_IsMoving, m_IsJump, out var animAxis, out var isAir);
             m_Animation.Animate(in animAxis, m_IsRun ? 1f : 0f, Time.deltaTime);
         }
 
@@ -80,6 +83,7 @@ namespace ithappy.Animals_FREE
             m_Axis = axis;
             m_Target = target;
             m_IsRun = isRun;
+            m_IsJump = isJump;
 
             if (m_Axis.sqrMagnitude < Mathf.Epsilon)
             {
@@ -140,8 +144,15 @@ namespace ithappy.Animals_FREE
 
             private float m_jumpTimer;
             private Vector3 m_LastForward;
+            private float m_VerticalVelocity;
 
-            public MovementHandler(CharacterController controller, Transform transform, float walkSpeed, float runSpeed, float rotateSpeed, float jumpHeight, Space space)
+            // store jump height locally to avoid referencing outer class members
+            private float m_JumpHeight;
+
+            private float m_GravityScale;
+
+
+            public MovementHandler(CharacterController controller, Transform transform, float walkSpeed, float runSpeed, float rotateSpeed, float jumpHeight, float GravityScale, Space space)
             {
                 m_Controller = controller;
                 m_Transform = transform;
@@ -150,16 +161,20 @@ namespace ithappy.Animals_FREE
                 m_RunSpeed = runSpeed;
                 m_RotateSpeed = rotateSpeed;
 
+                m_GravityScale = GravityScale;
                 m_Space = space;
+                m_JumpHeight = jumpHeight;
             }
 
-            public void SetStats(float walkSpeed, float runSpeed, float rotateSpeed, float jumpHeight, Space space)
+            public void SetStats(float walkSpeed, float runSpeed, float rotateSpeed, float jumpHeight, float gravityScale, Space space)
             {
                 m_WalkSpeed = walkSpeed;
                 m_RunSpeed = runSpeed;
                 m_RotateSpeed = rotateSpeed;
 
                 m_Space = space;
+                m_JumpHeight = jumpHeight;
+                m_GravityScale = gravityScale;
             }
 
             public void SetSurface(in Vector3 normal)
@@ -167,7 +182,7 @@ namespace ithappy.Animals_FREE
                 m_Normal = normal;
             }
 
-            public void Move(float deltaTime, in Vector2 axis, in Vector3 target, bool isRun, bool isMoving, out Vector2 animAxis, out bool isAir)
+            public void Move(float deltaTime, in Vector2 axis, in Vector3 target, bool isRun, bool isMoving, bool isJump, out Vector2 animAxis, out bool isAir)
             {
                 var cameraLook = Vector3.Normalize(target - m_Transform.position);
                 var targetForward = m_LastForward;
@@ -177,7 +192,7 @@ namespace ithappy.Animals_FREE
                     m_LastForward = Vector3.Normalize(movement);
                 }
 
-                CaculateGravity(deltaTime, out isAir);
+                CaculateGravity(deltaTime, isJump, out isAir);
                 Displace(deltaTime, in movement, isRun);
                 Turn(in targetForward, isMoving);
                 UpdateRotation(deltaTime);
@@ -207,29 +222,36 @@ namespace ithappy.Animals_FREE
 
             private void Displace(float deltaTime, in Vector3 movement, bool isRun)
             {
-                Vector3 displacement = (isRun ? m_RunSpeed : m_WalkSpeed) * movement;
-                displacement += m_GravityAcelleration;
-                displacement *= deltaTime;
+               Vector3 horizontal = (isRun ? m_RunSpeed : m_WalkSpeed) * movement * deltaTime;
+               Vector3 vertical = new Vector3(0f, m_VerticalVelocity * deltaTime, 0f);
 
-                m_Controller.Move(displacement);
+               m_Controller.Move(horizontal + vertical);
             }
 
-            private void CaculateGravity(float deltaTime, out bool isAir)
+            private void CaculateGravity(float deltaTime, bool isJumpPressed, out bool isAir)
             {
                 m_jumpTimer = Mathf.Max(m_jumpTimer - deltaTime, 0f);
 
                 if (m_Controller.isGrounded)
                 {
-                    m_GravityAcelleration = Physics.gravity;
+                    if (isJumpPressed && m_jumpTimer <= 0f)
+                    {
+                        // Apply jump force (v = sqrt(2 * g * height))
+                        m_VerticalVelocity = Mathf.Sqrt(-2f * Physics.gravity.y * m_JumpHeight);
+                        m_jumpTimer = 0.5f; // Prevents jump spamming
+                    }
+                    else
+                    {
+                        m_VerticalVelocity = -2f; // small downward push to keep grounded
+                    }
+
                     isAir = false;
-
-                    return;
                 }
-
-                isAir = true;
-
-                m_GravityAcelleration += Physics.gravity * deltaTime;
-                return;
+                else
+                {
+                    isAir = true;
+                    m_VerticalVelocity += Physics.gravity.y * m_GravityScale * deltaTime;
+                }
             }
 
             private void GenAnimationAxis(in Vector3 movement, out Vector2 animAxis)
